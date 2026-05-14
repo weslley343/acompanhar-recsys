@@ -10,7 +10,7 @@ WHERE client_fk = :client
   AND scale_fk = :scale_id;
 """
 
-# Busca as respostas de avaliações futuras (id maior que o atual) do mesmo cliente e escala
+# Busca as respostas da avaliação imediatamente posterior (pelo timestamp) do mesmo cliente e escala
 FETCH_EVALUATION_DETAILS = """
 SELECT
     evaluations.id AS evaluationid,
@@ -22,9 +22,15 @@ FROM evaluations
 INNER JOIN answers ON evaluations.id = answers.evaluation_fk
 INNER JOIN itens ON itens.id = answers.item_fk
 INNER JOIN questions ON questions.id = answers.question_fk
-WHERE evaluations.id > :evaluation_id
-  AND evaluations.client_fk = :client
-  AND evaluations.scale_fk = :scale_id;
+WHERE evaluations.id = (
+    SELECT id
+    FROM evaluations
+    WHERE client_fk = :client
+      AND scale_fk = :scale_id
+      AND created_at > (SELECT created_at FROM evaluations WHERE id = :evaluation_id)
+    ORDER BY created_at ASC
+    LIMIT 1
+);
 """
 
 # Lista todas as perguntas vinculadas a uma escala específica
