@@ -1,5 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+
 from auth import professional_only, TokenPayload, get_user_from_raw_token
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
@@ -33,6 +35,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+allowed_hosts = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+app.add_middleware(
+    TrustedHostMiddleware, 
+    allowed_hosts=[host.strip() for host in allowed_hosts]
+)
+
 
 class QueryParams(BaseModel):
     client: str                                  # UUID do cliente
