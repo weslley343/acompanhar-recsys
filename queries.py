@@ -43,24 +43,51 @@ FROM questions
 WHERE scale_fk = :scale_id;
 """
 
-# Busca todas as respostas da escala para montar a matriz de similaridade,
-# incluindo a avaliação atual e excluindo outras avaliações do mesmo cliente.
+# Busca as respostas das avaliações mais recentes para montar a matriz de similaridade.
+# Inclui obrigatoriamente a avaliação atual e limita o total de outras avaliações.
 FETCH_ANSWERS = """
-WITH answers_cte AS (
-    SELECT
-        evaluations.id AS evaluationid,
-        evaluations.client_fk,
-        questions.id AS questionid,
-        itens.score,
-        evaluations.created_at AS timestamp
-    FROM evaluations
-    INNER JOIN answers ON evaluations.id = answers.evaluation_fk
-    INNER JOIN itens ON itens.id = answers.item_fk
-    INNER JOIN questions ON questions.id = answers.question_fk
-    WHERE questions.scale_fk = :scale_id
+WITH selected_evaluations AS (
+    -- Avaliação atual
+    SELECT id FROM evaluations WHERE id = :evaluationid
+    UNION
+    -- X avaliações mais recentes de outros clientes
+    (SELECT id FROM evaluations
+     WHERE scale_fk = :scale_id AND client_fk != :client
+     ORDER BY created_at DESC
+     LIMIT :limit)
 )
-SELECT *
-FROM answers_cte
-WHERE client_fk != :client
-   OR evaluationid = :evaluationid;
+SELECT
+    evaluations.id AS evaluationid,
+    evaluations.client_fk,
+    questions.id AS questionid,
+    itens.score,
+    evaluations.created_at AS timestamp
+FROM evaluations
+INNER JOIN answers ON evaluations.id = answers.evaluation_fk
+INNER JOIN itens ON itens.id = answers.item_fk
+INNER JOIN questions ON questions.id = answers.question_fk
+WHERE evaluations.id IN (SELECT id FROM selected_evaluations);
+"""
+
+# Busca os IDs únicos de clientes a partir de uma lista de IDs de avaliação
+FETCH_CLIENTS_FROM_EVALUATIONS = """
+SELECT DISTINCT client_fk
+FROM evaluations
+WHERE id = ANY(:ids);
+"""
+
+# Busca o histórico completo de avaliações e respostas de uma lista de clientes
+FETCH_FULL_HISTORY = """
+SELECT
+    evaluations.id AS evaluationid,
+    evaluations.client_fk,
+    evaluations.created_at AS timestamp,
+    questions.id AS questionid,
+    itens.score
+FROM evaluations
+INNER JOIN answers ON evaluations.id = answers.evaluation_fk
+INNER JOIN itens ON itens.id = answers.item_fk
+INNER JOIN questions ON questions.id = answers.question_fk
+WHERE evaluations.client_fk = ANY(:clients)
+ORDER BY evaluations.created_at ASC;
 """
