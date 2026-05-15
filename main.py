@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
+from auth import professional_only, TokenPayload
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
 import pandas as pd
@@ -110,7 +111,10 @@ async def list_scales():
 
 
 @app.post("/recommend")
-async def recommend_questions_route(params: QueryParams):
+async def recommend_questions_route(
+    params: QueryParams, 
+    user: TokenPayload = Depends(professional_only)
+):
     evaluationid = params.evaluationid
     client = params.client
     scale = params.scale
