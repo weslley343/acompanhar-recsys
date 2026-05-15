@@ -47,6 +47,21 @@ def role_required(required_role: str):
         return user
     return dependency
 
+def get_user_from_raw_token(token: str) -> TokenPayload:
+    """
+    Verifies a raw JWT token string and returns the payload.
+    Useful for WebSocket authentication where tokens are often passed via query params.
+    """
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        return TokenPayload(**payload)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Token verification failed")
+
 # Specific shortcuts like in the Node example
 admin_only = role_required("admin")
 professional_only = role_required("professional")
