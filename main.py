@@ -251,13 +251,15 @@ async def websocket_recommend(
         print("DEBUG: Calculando matrizes e deltas...")
         matrizes_por_cliente = {}
         for c, df_c in dfs_por_cliente.items():
+            print(f"DEBUG: Criando pivot_table para cliente {c} ({len(df_c)} linhas)...")
             matrizes_por_cliente[c] = df_c.pivot_table(index="questionid", columns="evaluationid", values="score", aggfunc="mean")
 
         matrizes_delta_por_cliente = {}
         for c, matriz in matrizes_por_cliente.items():
+            print(f"DEBUG: Calculando delta para cliente {c}...")
             matriz_ordenada = matriz.sort_index(axis=1)
             matriz_delta = matriz_ordenada.diff(axis=1)
-            if not matriz_delta.empty:
+            if not matriz_delta.empty and len(matriz_delta.columns) > 0:
                 matriz_delta[matriz_delta.columns[0]] = 0
             matrizes_delta_por_cliente[c] = matriz_delta
 
