@@ -299,9 +299,15 @@ async def websocket_recommend(
         if somas_por_cliente:
             soma_global = pd.concat(somas_por_cliente.values()).groupby(level=0).sum()
             top_n_res = soma_global.sort_values().head(ntop_rec)
+            print(f"DEBUG: Gerando top {len(top_n_res)} recomendações...")
             for q_id, score in top_n_res.items():
-                top_recommendations.append({"questionid": int(q_id), "intensity_score": float(score)})
+                try:
+                    final_id = int(q_id)
+                except:
+                    final_id = str(q_id)
+                top_recommendations.append({"questionid": final_id, "intensity_score": float(score)})
 
+        print(f"DEBUG: Enviando resultado final com {len(top_recommendations)} itens...")
         await websocket.send_json({
             "status": "completed",
             "message": "Processamento concluído.",
