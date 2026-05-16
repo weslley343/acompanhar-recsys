@@ -224,8 +224,10 @@ async def websocket_recommend(
         eval_targets_mask = df_history['evaluationid'].isin(similar_evaluation_ids)
         evaluations_targets = df_history[eval_targets_mask][['evaluationid', 'timestamp', 'client_fk']].drop_duplicates()
         
+        print(f"DEBUG: Iniciando filtragem de janela temporal ({window_days} dias) para {len(evaluations_targets)} alvos...")
         filtered_list = []
-        for _, row in evaluations_targets.iterrows():
+        for i, (_, row) in enumerate(evaluations_targets.iterrows()):
+            if i % 2 == 0: print(f"DEBUG: Processando alvo {i+1}/{len(evaluations_targets)}...")
             eval_id = row['evaluationid']
             eval_time = row['timestamp']
             client_id = row['client_fk']
@@ -243,8 +245,10 @@ async def websocket_recommend(
             "message": f"Processadas {len(df_30d_after)} avaliações na janela de {window_days} dias."
         })
 
+        print(f"DEBUG: Agrupando dados por cliente ({df_30d_after['client_fk'].nunique() if not df_30d_after.empty else 0} clientes)...")
         dfs_por_cliente = {c: df_30d_after[df_30d_after["client_fk"] == c].copy() for c in df_30d_after["client_fk"].unique()}
         
+        print("DEBUG: Calculando matrizes e deltas...")
         matrizes_por_cliente = {}
         for c, df_c in dfs_por_cliente.items():
             matrizes_por_cliente[c] = df_c.pivot_table(index="questionid", columns="evaluationid", values="score", aggfunc="mean")
