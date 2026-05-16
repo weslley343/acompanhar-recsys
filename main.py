@@ -265,16 +265,22 @@ async def websocket_recommend(
 
         await websocket.send_json({"status": "processing", "step": "intensity_calculation", "message": "Calculando coeficientes de intensidade..."})
         
+        print("DEBUG: Iniciando cálculo de intensidade (Loop Triplo)...")
         coeficientes_por_cliente = {}
         for c, matriz_delta in matrizes_delta_por_cliente.items():
+            print(f"DEBUG: Processando intensidades para cliente {c}...")
             coef = pd.DataFrame(data=np.zeros((matriz_delta.shape[0], matriz_delta.shape[1])), index=matriz_delta.index, columns=matriz_delta.columns, dtype=float)
             for questao in matriz_delta.index:
                 last_change_eval = None
                 for eval_id in matriz_delta.columns:
                     delta = matriz_delta.loc[questao, eval_id]
                     if delta == 0: continue
-                    t_atual = timestamps[eval_id]
-                    t_ref = timestamps[last_change_eval] if last_change_eval else timestamps[matriz_delta.columns[0]]
+                    t_atual = timestamps.get(eval_id)
+                    t_ref = timestamps.get(last_change_eval) if last_change_eval else timestamps.get(matriz_delta.columns[0])
+                    
+                    if t_atual is None or t_ref is None:
+                        continue
+                    
                     delta_t = (t_atual - t_ref).total_seconds() / 86400.0
                     coef.loc[questao, eval_id] = float((delta_t / abs(delta)) * (1 if delta > 0 else -1))
                     last_change_eval = eval_id
