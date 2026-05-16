@@ -160,12 +160,10 @@ async def websocket_recommend(
             if user.role != "professional":
                 print(f"DEBUG: Acesso negado. Role '{user.role}' não é 'professional'.")
                 await websocket.send_json({"status": "error", "message": "Access denied. Professional only."})
-                await websocket.close(code=4003)
                 return
         except Exception as e:
             print(f"DEBUG: Falha na autenticação do WS: {str(e)}")
             await websocket.send_json({"status": "error", "message": f"Auth failed: {str(e)}"})
-            await websocket.close(code=4008)
             return
 
         # 2. Receber parâmetros (ou via query params, mas vamos usar um primeiro evento JSON)
@@ -191,7 +189,6 @@ async def websocket_recommend(
         if evaluation_row.empty:
             print(f"DEBUG: Avaliação {evaluationid} NÃO encontrada para o cliente {client} na escala {scale}.")
             await websocket.send_json({"status": "error", "message": "Evaluation not found"})
-            await websocket.close()
             return
         
         print(f"DEBUG: Avaliação encontrada. Buscando respostas...")
@@ -239,10 +236,11 @@ async def websocket_recommend(
             
         df_30d_after = pd.concat(filtered_list, ignore_index=True) if filtered_list else pd.DataFrame()
         
+        n_evals = df_30d_after['evaluationid'].nunique() if not df_30d_after.empty else 0
         await websocket.send_json({
             "status": "processing", 
             "step": "window_filtering", 
-            "message": f"Processadas {len(df_30d_after)} avaliações na janela de {window_days} dias."
+            "message": f"Processadas {len(df_30d_after)} respostas ({n_evals} avaliações) na janela de {window_days} dias."
         })
 
         print(f"DEBUG: Agrupando dados por cliente ({df_30d_after['client_fk'].nunique() if not df_30d_after.empty else 0} clientes)...")
@@ -293,6 +291,12 @@ async def websocket_recommend(
             coeficientes_por_cliente[c] = pd.DataFrame(coef_vals, index=matriz_delta.index, columns=matriz_delta.columns)
             print(f"DEBUG: Cliente {c} concluído.")
 
+        await websocket.send_json({
+            "status": "processing", 
+            "step": "ranking", 
+            "message": "Consolidando intensidades e gerando ranking final..."
+        })
+
         somas_por_cliente = {c: m.sum(axis=1) for c, m in coeficientes_por_cliente.items()}
         
         top_recommendations = []
@@ -324,4 +328,7 @@ async def websocket_recommend(
         traceback.print_exc()
         await websocket.send_json({"status": "error", "message": f"Unexpected error: {str(e)}"})
     finally:
-        await websocket.close()
+        try:
+            await websocket.close()
+        except:
+            pass
