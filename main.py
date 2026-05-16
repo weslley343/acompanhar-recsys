@@ -186,17 +186,18 @@ async def websocket_recommend(
 
         # 3. Execução do pipeline com envios parciais
         
-        # Verificar se avaliação existe
+        print(f"DEBUG: Verificando existência da avaliação {evaluationid}...")
         evaluation_row = query_relation(client, evaluationid, scale)
         if evaluation_row.empty:
+            print(f"DEBUG: Avaliação {evaluationid} NÃO encontrada para o cliente {client} na escala {scale}.")
             await websocket.send_json({"status": "error", "message": "Evaluation not found"})
             await websocket.close()
             return
-
-        await websocket.send_json({"status": "processing", "step": "fetching_answers", "message": "Buscando respostas da avaliação..."})
-        df_primary_answers = fetch_answers(client=client, evaluationid=evaluationid, scale_id=scale)
         
-        await websocket.send_json({"status": "processing", "step": "calculating_similarity", "message": f"Calculando similaridade para {len(df_primary_answers)} respostas..."})
+        print(f"DEBUG: Avaliação encontrada. Buscando respostas...")
+
+        df_primary_answers = fetch_answers(client=client, evaluationid=evaluationid, scale_id=scale)
+        print(f"DEBUG: {len(df_primary_answers)} respostas encontradas. Iniciando cálculo de similaridade...")
         df_questions = fetch_questions(scale_id=scale)
         pivot_table = df_primary_answers.pivot_table(index='evaluationid', columns='questionid', values='score', fill_value=0)
         matrix = pivot_table.values
@@ -210,13 +211,13 @@ async def websocket_recommend(
         top_similarities = (similarity_with_clients.sort_values(by='score', ascending=False)
                             .drop_duplicates(subset='client_fk').head(ntop_sim))
         
-        await websocket.send_json({"status": "processing", "step": "top_similarities", "message": f"Encontradas {len(top_similarities)} avaliações similares."})
+        print(f"DEBUG: Top {len(top_similarities)} avaliações similares encontradas.")
 
         similar_evaluation_ids = top_similarities.index.tolist()
         clients = fetch_clients_from_evaluations(similar_evaluation_ids)
-        
-        await websocket.send_json({"status": "processing", "step": "fetching_history", "message": f"Buscando histórico de {len(clients)} clientes..."})
+        print(f"DEBUG: Buscando histórico para {len(clients)} clientes similares...")
         df_history = fetch_full_history(clients)
+        print(f"DEBUG: Histórico recuperado: {len(df_history)} registros.")
         
         df_history['timestamp'] = pd.to_datetime(df_history['timestamp'])
         timestamps = df_history.set_index("evaluationid")["timestamp"].to_dict()
