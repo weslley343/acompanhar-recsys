@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect, Query
+import traceback
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
@@ -171,6 +172,7 @@ async def websocket_recommend(
         await websocket.send_json({"status": "connected", "message": "Aguardando parâmetros da recomendação..."})
         
         data = await websocket.receive_json()
+        print(f"DEBUG: Dados recebidos via WS: {data}")
         params = QueryParams(**data)
         
         evaluationid = params.evaluationid
@@ -290,8 +292,10 @@ async def websocket_recommend(
         })
         
     except WebSocketDisconnect:
-        print("Cliente desconectado do WebSocket.")
+        print("DEBUG: Cliente desconectado do WebSocket.")
     except Exception as e:
+        print(f"DEBUG: Erro inesperado no WebSocket: {str(e)}")
+        traceback.print_exc()
         await websocket.send_json({"status": "error", "message": f"Unexpected error: {str(e)}"})
     finally:
         await websocket.close()
