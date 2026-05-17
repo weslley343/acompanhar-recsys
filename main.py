@@ -112,9 +112,9 @@ def fetch_clients_from_evaluations(evaluation_ids):
     return clients
 
 
-def fetch_full_history(clients):
+def fetch_full_history(clients, scale_id):
     with engine.connect() as conn:
-        result = conn.execute(text(FETCH_FULL_HISTORY), {"clients": clients})
+        result = conn.execute(text(FETCH_FULL_HISTORY), {"clients": clients, "scale_id": scale_id})
         df = pd.DataFrame(result.fetchall(), columns=result.keys())
     return df
 
@@ -212,8 +212,20 @@ async def websocket_recommend(
 
         similar_evaluation_ids = top_similarities.index.tolist()
         clients = fetch_clients_from_evaluations(similar_evaluation_ids)
+        
+        await websocket.send_json({
+            "status": "processing",
+            "step": "similarity_search",
+            "message": "Identificados registros similares em outros pacientes. Buscando históricos de evolução...",
+            "details": {
+                "similar_evaluations_count": len(similar_evaluation_ids),
+                "clients_count": len(clients),
+                "average_similarity": float(top_similarities['score'].mean()) if not top_similarities.empty else 0.0
+            }
+        })
+
         print(f"DEBUG: Buscando histórico para {len(clients)} clientes similares...")
-        df_history = fetch_full_history(clients)
+        df_history = fetch_full_history(clients, scale)
         print(f"DEBUG: Histórico recuperado: {len(df_history)} registros.")
         
         df_history['timestamp'] = pd.to_datetime(df_history['timestamp'])
@@ -261,7 +273,14 @@ async def websocket_recommend(
                 matriz_delta[matriz_delta.columns[0]] = 0
             matrizes_delta_por_cliente[c] = matriz_delta
 
-        await websocket.send_json({"status": "processing", "step": "intensity_calculation", "message": "Calculando coeficientes de intensidade..."})
+        await websocket.send_json({
+            "status": "processing", 
+            "step": "intensity_calculation", 
+            "message": f"Iniciando cálculo de deltas e coeficientes de intensidade para {len(dfs_por_cliente)} pacientes similares...",
+            "details": {
+                "patients_count": len(dfs_por_cliente)
+            }
+        })
         
         print("DEBUG: Iniciando cálculo de intensidade (Loop Triplo)...")
         coeficientes_por_cliente = {}
@@ -292,9 +311,21 @@ async def websocket_recommend(
             print(f"DEBUG: Cliente {c} concluído.")
 
         await websocket.send_json({
+            "status": "processing",
+            "step": "intensity_completed",
+            "message": "Cálculo de deltas e coeficientes concluído para todos os pacientes similares.",
+            "details": {
+                "calculated_patients_count": len(coeficientes_por_cliente)
+            }
+        })
+
+        await websocket.send_json({
             "status": "processing", 
-            "step": "ranking", 
-            "message": "Consolidando intensidades e gerando ranking final..."
+            "step": "ranking_generation", 
+            "message": "Agrupando e somando os coeficientes de intensidade globalmente para formar o ranking final...",
+            "details": {
+                "contributing_patients_count": len(coeficientes_por_cliente)
+            }
         })
 
         somas_por_cliente = {c: m.sum(axis=1) for c, m in coeficientes_por_cliente.items()}
@@ -302,6 +333,18 @@ async def websocket_recommend(
         top_recommendations = []
         if somas_por_cliente:
             soma_global = pd.concat(somas_por_cliente.values()).groupby(level=0).sum()
+            
+            # Redundância de segurança (LGPD & Defesa em Profundidade):
+            # Filtra para que apenas IDs de questões pertencentes à escala ativa sejam ranqueados
+            valid_question_ids = set(df_questions['questionid'].tolist())
+            def is_valid_question(q):
+                try:
+                    return int(q) in valid_question_ids
+                except:
+                    return False
+            
+            soma_global = soma_global[soma_global.index.map(is_valid_question)]
+            
             top_n_res = soma_global.sort_values().head(ntop_rec)
             print(f"DEBUG: Gerando top {len(top_n_res)} recomendações...")
             for q_id, score in top_n_res.items():

@@ -89,5 +89,6 @@ INNER JOIN answers ON evaluations.id = answers.evaluation_fk
 INNER JOIN itens ON itens.id = answers.item_fk
 INNER JOIN questions ON questions.id = answers.question_fk
 WHERE evaluations.client_fk = ANY(:clients)
+  AND evaluations.scale_fk = :scale_id
 ORDER BY evaluations.created_at ASC;
 """
